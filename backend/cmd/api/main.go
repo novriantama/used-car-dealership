@@ -43,6 +43,9 @@ func main() {
 	// Public API routes
 	api := router.Group("/api")
 	{
+		// Serve uploaded images statically
+		api.Static("/uploads", "./uploads")
+
 		api.POST("/admin/login", h.Login)
 		api.GET("/vehicles", h.GetVehicles)
 		api.GET("/vehicles/:id", h.GetVehicleByID)
@@ -54,6 +57,8 @@ func main() {
 			protected.POST("/vehicles", h.CreateVehicle)
 			protected.PUT("/vehicles/:id", h.UpdateVehicle)
 			protected.DELETE("/vehicles/:id", h.DeleteVehicle)
+
+			protected.POST("/upload", h.UploadImages)
 
 			// POS / Transactions
 			protected.POST("/transactions", h.CreateTransaction)

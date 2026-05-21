@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 import '../models/vehicle.dart';
 import '../models/transaction.dart';
 
@@ -250,5 +251,52 @@ class ApiService {
     } catch (e) {
       throw Exception('API error: $e');
     }
+  }
+
+  // Upload multiple images (Protected)
+  static Future<List<String>> uploadImages(
+      List<PlatformFile> files, String token) async {
+    final uri = Uri.parse('$baseUrl/upload');
+    try {
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Bearer $token';
+
+      for (final file in files) {
+        if (file.bytes != null) {
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'images',
+              file.bytes!,
+              filename: file.name,
+            ),
+          );
+        }
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        final List<dynamic> urls = decoded['urls'] ?? [];
+        return urls.cast<String>();
+      } else {
+        final decoded = json.decode(response.body);
+        throw Exception(decoded['error'] ?? 'Failed to upload images');
+      }
+    } catch (e) {
+      throw Exception('API error: $e');
+    }
+  }
+
+  // Resolve relative local image paths to absolute API backend URLs
+  static String getImageUrl(String url) {
+    if (url.isEmpty) return '';
+    if (url.startsWith('http')) return url;
+    final apiBase = baseUrl;
+    final origin = apiBase.endsWith('/api')
+        ? apiBase.substring(0, apiBase.length - 4)
+        : apiBase;
+    return '$origin$url';
   }
 }

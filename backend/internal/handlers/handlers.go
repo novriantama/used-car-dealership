@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -565,3 +569,55 @@ func (h *Handler) fetchTransactionByID(id int64) (*models.Transaction, error) {
 	}
 	return &t, nil
 }
+
+func generateRandomString(n int) string {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(bytes)
+}
+
+// UploadImages handles multipart image upload, saving files to ./uploads/
+func (h *Handler) UploadImages(c *gin.Context) {
+	// Ensure uploads directory exists
+	uploadDir := "./uploads"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create uploads directory: " + err.Error()})
+		return
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form: " + err.Error()})
+		return
+	}
+
+	files := form.File["images"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No images provided under key 'images'"})
+		return
+	}
+
+	var urls []string
+	for _, file := range files {
+		ext := filepath.Ext(file.Filename)
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" && ext != ".gif" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported file type: only image files are allowed"})
+			return
+		}
+
+		filename := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), generateRandomString(4), ext)
+		targetPath := filepath.Join(uploadDir, filename)
+
+		if err := c.SaveUploadedFile(file, targetPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
+			return
+		}
+
+		urls = append(urls, fmt.Sprintf("/api/uploads/%s", filename))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"urls": urls})
+}
+

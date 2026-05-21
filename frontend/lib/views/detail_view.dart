@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:html' as html;
 import '../models/vehicle.dart';
+import '../services/api_service.dart';
 
 class DetailView extends StatefulWidget {
   final Vehicle vehicle;
@@ -23,6 +24,10 @@ class _DetailViewState extends State<DetailView> {
   int _tenureYears = 3; // Default 3 years (36 months)
   final TextEditingController _dpController = TextEditingController();
 
+  // Gallery Slideshow State
+  int _currentSlideIndex = 0;
+  late PageController _pageController;
+
   // Local leasing flat rates per year
   final Map<int, double> _interestRates = {
     1: 0.055, // 5.5%
@@ -35,10 +40,20 @@ class _DetailViewState extends State<DetailView> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: 0);
     // Default DP to 20% of vehicle price
     _downPayment = widget.vehicle.price * 0.20;
     _dpController.text = _downPayment.round().toString();
   }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _dpController.dispose();
+    super.dispose();
+  }
+
+  String _getImageUrl(String url) => ApiService.getImageUrl(url);
 
   String _formatPrice(double price) {
     final formatter = NumberFormat.currency(
@@ -158,50 +173,192 @@ class _DetailViewState extends State<DetailView> {
 
   // Gallery Widget
   Widget _buildGallery(Vehicle v, ThemeData theme) {
+    final urls = v.imageUrls.isNotEmpty ? v.imageUrls : [''];
+
     return Column(
       children: [
         AspectRatio(
           aspectRatio: 16 / 9,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                )
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                v.imageUrls.isNotEmpty ? v.imageUrls[0] : '',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: theme.colorScheme.surfaceVariant,
-                  child: Icon(Icons.directions_car, size: 96, color: theme.colorScheme.onSurfaceVariant),
+          child: Stack(
+            children: [
+              // Main Image PageView
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: urls.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentSlideIndex = index;
+                      });
+                    },
+                    itemBuilder: (context, index) {
+                      final url = urls[index];
+                      return Image.network(
+                        _getImageUrl(url),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: theme.colorScheme.surfaceVariant,
+                          child: Icon(Icons.directions_car, size: 96, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
+              // Left/Right Navigation Arrows Overlay
+              if (urls.length > 1) ...[
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12.0),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.black38,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.chevron_left, color: Colors.white, size: 28),
+                          onPressed: () {
+                            if (_currentSlideIndex > 0) {
+                              _pageController.previousPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            } else {
+                              _pageController.animateToPage(
+                                urls.length - 1,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.black38,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.chevron_right, color: Colors.white, size: 28),
+                          onPressed: () {
+                            if (_currentSlideIndex < urls.length - 1) {
+                              _pageController.nextPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            } else {
+                              _pageController.animateToPage(
+                                0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Indicator dots overlay at the bottom center of the page view
+                Positioned(
+                  bottom: 16,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      urls.length,
+                      (index) {
+                        final isSelected = _currentSlideIndex == index;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: isSelected ? 24 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : Colors.white70,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (v.imageUrls.length > 1) ...[
-          const SizedBox(height: 12),
+        if (urls.length > 1) ...[
+          const SizedBox(height: 16),
+          // Horizontal list of thumbnails
           SizedBox(
             height: 80,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: v.imageUrls.length,
+              itemCount: urls.length,
               itemBuilder: (context, index) {
+                final isSelected = _currentSlideIndex == index;
                 return Padding(
                   padding: const EdgeInsets.only(right: 12.0),
-                  child: ClipRRect(
+                  child: InkWell(
+                    onTap: () {
+                      _pageController.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      v.imageUrls[index],
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       width: 120,
-                      fit: BoxFit.cover,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? theme.colorScheme.primary
+                              : Colors.transparent,
+                          width: 2.5,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(5),
+                        child: Opacity(
+                          opacity: isSelected ? 1.0 : 0.6,
+                          child: Image.network(
+                            _getImageUrl(urls[index]),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: theme.colorScheme.surfaceVariant,
+                              child: const Icon(Icons.broken_image),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -212,7 +369,6 @@ class _DetailViewState extends State<DetailView> {
       ],
     );
   }
-
   // Specs Specifications Widget
   Widget _buildSpecsSummary(Vehicle v, ThemeData theme, Color taxColor, bool isTaxActive) {
     final formatter = NumberFormat.decimalPattern('id_ID');

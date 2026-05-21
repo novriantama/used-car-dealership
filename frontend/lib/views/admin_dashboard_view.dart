@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/vehicle.dart';
 import '../services/api_service.dart';
 import 'pos_view.dart';
@@ -286,7 +287,7 @@ class _AdminDashboardViewState extends State<AdminDashboardView>
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: Image.network(
-                            v.imageUrls.isNotEmpty ? v.imageUrls[0] : '',
+                            v.imageUrls.isNotEmpty ? ApiService.getImageUrl(v.imageUrls[0]) : '',
                             width: 50,
                             height: 35,
                             fit: BoxFit.cover,
@@ -368,7 +369,7 @@ class _AdminDashboardViewState extends State<AdminDashboardView>
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: Image.network(
-                v.imageUrls.isNotEmpty ? v.imageUrls[0] : '',
+                v.imageUrls.isNotEmpty ? ApiService.getImageUrl(v.imageUrls[0]) : '',
                 width: 60,
                 height: 45,
                 fit: BoxFit.cover,
@@ -433,12 +434,14 @@ class _VehicleFormState extends State<VehicleForm> {
   late TextEditingController _mileageController;
   late TextEditingController _engineCapacityController;
   late TextEditingController _locationController;
-  late TextEditingController _imageUrlController;
   late TextEditingController _inspectionEngineController;
   late TextEditingController _inspectionInteriorController;
   late TextEditingController _inspectionExteriorController;
   late TextEditingController _inspectionNotesController;
   late TextEditingController _taxExpiryController;
+
+  List<String> _imageUrls = [];
+  List<PlatformFile> _newLocalFiles = [];
 
   String _transmission = 'Automatic';
   String _fuelType = 'Petrol';
@@ -462,9 +465,6 @@ class _VehicleFormState extends State<VehicleForm> {
     _mileageController = TextEditingController(text: v?.mileage.toString() ?? '');
     _engineCapacityController = TextEditingController(text: v?.engineCapacity.toString() ?? '');
     _locationController = TextEditingController(text: v?.location ?? 'Jakarta Selatan');
-    _imageUrlController = TextEditingController(
-      text: (v?.imageUrls.isNotEmpty ?? false) ? v!.imageUrls[0] : 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=600',
-    );
     _inspectionEngineController = TextEditingController(text: v?.inspectionEngine.toString() ?? '95');
     _inspectionInteriorController = TextEditingController(text: v?.inspectionInterior.toString() ?? '95');
     _inspectionExteriorController = TextEditingController(text: v?.inspectionExterior.toString() ?? '95');
@@ -477,16 +477,119 @@ class _VehicleFormState extends State<VehicleForm> {
       _plateType = v.plateType;
       _taxStatus = v.taxStatus;
       _status = v.status;
+      _imageUrls = List<String>.from(v.imageUrls);
     }
+  }
+
+  String _getImageUrl(String url) => ApiService.getImageUrl(url);
+
+  Future<void> _pickImages() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: true,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _newLocalFiles.addAll(result.files);
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Gagal memilih file: $e";
+      });
+    }
+  }
+
+  Widget _buildImageThumbnail(dynamic source, bool isLocal) {
+    final theme = Theme.of(context);
+    Widget imageWidget;
+    if (isLocal) {
+      final file = source as PlatformFile;
+      if (file.bytes != null) {
+        imageWidget = Image.memory(file.bytes!, fit: BoxFit.cover);
+      } else {
+        imageWidget = const Icon(Icons.insert_drive_file);
+      }
+    } else {
+      final url = source as String;
+      imageWidget = Image.network(
+        _getImageUrl(url),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
+      );
+    }
+
+    return Container(
+      width: 120,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            imageWidget,
+            Positioned(
+              top: 4,
+              right: 4,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    if (isLocal) {
+                      _newLocalFiles.remove(source);
+                    } else {
+                      _imageUrls.remove(source);
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_imageUrls.isEmpty && _newLocalFiles.isEmpty) {
+      setState(() {
+        _errorMessage = 'Harap pilih minimal satu foto kendaraan';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
+
+    List<String> finalUrls = List<String>.from(_imageUrls);
+    try {
+      if (_newLocalFiles.isNotEmpty) {
+        final uploaded = await ApiService.uploadImages(_newLocalFiles, widget.token);
+        finalUrls.addAll(uploaded);
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Gagal mengunggah foto: " + e.toString().replaceAll('Exception:', '');
+        _isLoading = false;
+      });
+      return;
+    }
 
     final vehicleData = Vehicle(
       id: widget.vehicle?.id ?? 0,
@@ -508,7 +611,7 @@ class _VehicleFormState extends State<VehicleForm> {
       inspectionExterior: int.parse(_inspectionExteriorController.text),
       inspectionNotes: _inspectionNotesController.text,
       status: _status,
-      imageUrls: [_imageUrlController.text],
+      imageUrls: finalUrls,
     );
 
     try {
@@ -525,6 +628,7 @@ class _VehicleFormState extends State<VehicleForm> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -738,10 +842,52 @@ class _VehicleFormState extends State<VehicleForm> {
                 ],
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _imageUrlController,
-                decoration: const InputDecoration(labelText: 'URL Gambar Utama'),
-                validator: (v) => v!.isEmpty ? 'Harus diisi' : null,
+              Text(
+                'Foto Kendaraan',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: 140,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+                ),
+                child: _imageUrls.isEmpty && _newLocalFiles.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.image_outlined, size: 40, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6)),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Belum ada foto yang dipilih',
+                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8)),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.all(8),
+                        children: [
+                          ..._imageUrls.map((url) => _buildImageThumbnail(url, false)),
+                          ..._newLocalFiles.map((file) => _buildImageThumbnail(file, true)),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _pickImages,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: const Text('Unggah Foto (Bisa banyak)'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               const Divider(),

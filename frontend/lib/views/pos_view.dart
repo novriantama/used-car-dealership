@@ -393,7 +393,7 @@ class _PosViewState extends State<PosView> {
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(6),
                                     child: Image.network(
-                                      v.imageUrls.isNotEmpty ? v.imageUrls[0] : '',
+                                      v.imageUrls.isNotEmpty ? ApiService.getImageUrl(v.imageUrls[0]) : '',
                                       width: 56,
                                       height: 42,
                                       fit: BoxFit.cover,
@@ -468,7 +468,7 @@ class _PosViewState extends State<PosView> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: Image.network(
-                        _selectedVehicle!.imageUrls.isNotEmpty ? _selectedVehicle!.imageUrls[0] : '',
+                        _selectedVehicle!.imageUrls.isNotEmpty ? ApiService.getImageUrl(_selectedVehicle!.imageUrls[0]) : '',
                         width: 80,
                         height: 58,
                         fit: BoxFit.cover,

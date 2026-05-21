@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/vehicle.dart';
+import '../services/api_service.dart';
 
 class CarCard extends StatefulWidget {
   final Vehicle vehicle;
@@ -87,7 +88,7 @@ class _CarCardState extends State<CarCard> {
                       aspectRatio: 1.6,
                       child: Image.network(
                         v.imageUrls.isNotEmpty
-                            ? v.imageUrls[0]
+                            ? ApiService.getImageUrl(v.imageUrls[0])
                             : 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=600',
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
